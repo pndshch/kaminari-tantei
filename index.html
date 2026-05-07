@@ -897,6 +897,34 @@ setMsg(t('msgIntro'));
 buildHistory();
 updateRoundLabel();
 
+// ===== Auto-record mode =====
+if (location.search.includes('record')){
+  // Auto-play timeline (in ms from page load):
+  // 0-1500: title
+  // 1500: hide title, start round
+  // 2200: click "wait"
+  // 3500: flash
+  // 3850: user taps flash
+  // 6200: thunder fires + user taps (gap ~2.35s)
+  // 7000+: result panel visible
+  setTimeout(() => {
+    els.title.classList.add('gone');
+    els.title.style.display = 'none';
+    state.round = 0; state.results = []; startRound();
+  }, 1500);
+  setTimeout(() => { els.actionBtn.click(); }, 2200);
+  setTimeout(() => {
+    clearTimeout(state.flashTimer);
+    state.trueGap = 2300;
+    fireFlash();
+  }, 3500);
+  setTimeout(() => { onFlashTap(); }, 3850);
+  setTimeout(() => {
+    state.thunderUserTap = performance.now();
+    finishRound(state.thunderUserTap - state.flashUserTap);
+  }, 6300);
+}
+
 // Keyboard support (space)
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space'){
