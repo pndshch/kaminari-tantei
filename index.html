@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>カミナリ・タンテイ — Thunder Detective</title>
+<meta name="description" content="ピカッ と ゴロゴロ の あいだ を はかって、かみなり が なんメートル むこう に あるか わかる、5〜9さい むけ の ゲーム。" />
+<meta name="theme-color" content="#0a0e1a" />
+<style>
+  :root{
+    --sky-1:#0a0e1a;
+    --sky-2:#171f33;
+    --sky-3:#243049;
+    --rain:rgba(180,200,255,0.35);
+    --flash:#ffffff;
+    --ink:#f1f3f8;
+    --muted:#9ba6bd;
+    --accent:#fed35a;
+    --thunder:#5b8cff;
+    --rose:#ff7aa2;
+    --ok:#79e07a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--sky-1);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;overflow:hidden;user-select:none}
+  body{
+    background:
+      radial-gradient(ellipse at 50% -10%, #2c3a5a 0%, #131a2c 45%, var(--sky-1) 100%);
+    position:fixed;inset:0;
+  }
+
+  /* Stage */
+  #stage{position:fixed;inset:0;overflow:hidden}
+
+  /* Lightning flash overlay */
+  #flash{
+    position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;
+    mix-blend-mode:screen;
+    transition:opacity 0.05s linear;
+    z-index:5;
+  }
+  #flash.fire{
+    animation:flash 0.7s ease-out forwards;
+  }
+  @keyframes flash{
+    0%{opacity:0}
+    5%{opacity:0.95}
+    15%{opacity:0.4}
+    25%{opacity:0.85}
+    50%{opacity:0.2}
+    100%{opacity:0}
+  }
+
+  /* Bolt SVG */
+  #bolt{
+    position:absolute;top:14%;left:50%;transform:translateX(-50%);
+    width:min(22vw,140px);opacity:0;filter:drop-shadow(0 0 14px #fff) drop-shadow(0 0 36px #b3c4ff);
+    pointer-events:none;z-index:6;
+  }
+  #bolt.fire{animation:boltFire 0.6s ease-out forwards}
+  @keyframes boltFire{
+    0%{opacity:0;transform:translateX(-50%) scale(0.85)}
+    8%{opacity:1;transform:translateX(-50%) scale(1.05)}
+    25%{opacity:0.6}
+    35%{opacity:1}
+    100%{opacity:0;transform:translateX(-50%) scale(1)}
+  }
+
+  /* Clouds */
+  .cloud{
+    position:absolute;
+    background:radial-gradient(ellipse at 40% 60%, #1f2843 0%, #141a2c 60%, transparent 75%);
+    border-radius:50%;
+    filter:blur(2px);
+    z-index:2;
+  }
+  .cloud.shake{animation:rumble 0.9s ease-out}
+  @keyframes rumble{
+    0%,100%{transform:translate(0,0)}
+    10%{transform:translate(-3px,1px)}
+    20%{transform:translate(2px,-2px)}
+    30%{transform:translate(-2px,2px)}
+    40%{transform:translate(3px,1px)}
+    55%{transform:translate(-2px,-1px)}
+    70%{transform:translate(2px,2px)}
+    85%{transform:translate(-1px,1px)}
+  }
+
+  /* Rain */
+  #rain{position:absolute;inset:0;z-index:1;pointer-events:none}
+  .drop{
+    position:absolute;width:1px;height:14px;background:linear-gradient(transparent,var(--rain));
+    animation:fall linear infinite;
+    opacity:0.7;
+  }
+  @keyframes fall{
+    0%{transform:translateY(-20vh)}
+    100%{transform:translateY(120vh)}
+  }
+
+  /* Storm cloud (the main one) */
+  #storm{
+    position:absolute;left:50%;top:18%;transform:translate(-50%,-50%);
+    width:min(80vw,520px);height:min(35vw,210px);
+    z-index:3;
+    pointer-events:none;
+  }
+  #storm svg{width:100%;height:100%;display:block;filter:drop-shadow(0 8px 24px rgba(0,0,0,0.4))}
+  #storm.lit ellipse{filter:url(#glow)}
+
+  /* HUD */
+  #hud{
+    position:absolute;left:0;right:0;top:0;padding:14px 18px;
+    display:flex;justify-content:space-between;align-items:center;
+    z-index:10;font-size:14px;color:var(--muted);
+  }
+  #hud .round{font-weight:600;color:var(--ink);letter-spacing:0.04em}
+  #hud .lang{
+    background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
+    color:var(--ink);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;
+  }
+  #hud .lang:hover{background:rgba(255,255,255,0.1)}
+
+  /* Center panel */
+  #panel{
+    position:absolute;left:50%;bottom:0;transform:translateX(-50%);
+    width:100%;max-width:560px;
+    padding:24px 22px max(28px,env(safe-area-inset-bottom));
+    display:flex;flex-direction:column;align-items:center;gap:18px;
+    z-index:10;
+  }
+
+  .msg{
+    font-size:clamp(18px,4.5vw,24px);text-align:center;line-height:1.45;
+    min-height:3em;max-width:480px;
+    color:var(--ink);
+    text-shadow:0 2px 10px rgba(0,0,0,0.6);
+  }
+  .msg .small{display:block;font-size:0.7em;color:var(--muted);margin-top:6px;font-weight:400}
+
+  /* Buttons */
+  .btn{
+    display:flex;align-items:center;justify-content:center;
+    width:100%;max-width:320px;
+    padding:18px 24px;border-radius:999px;border:none;
+    font-size:clamp(18px,5vw,22px);font-weight:700;
+    cursor:pointer;transition:transform 0.08s, box-shadow 0.2s;
+    font-family:inherit;
+    box-shadow:0 6px 24px rgba(0,0,0,0.4);
+    letter-spacing:0.02em;
+  }
+  .btn:active{transform:translateY(2px) scale(0.98)}
+  .btn[disabled]{opacity:0.45;cursor:default}
+  .btn[disabled]:active{transform:none}
+
+  .btn.primary{
+    background:linear-gradient(180deg,#fed35a,#f5a623);
+    color:#3a2400;
+    box-shadow:0 6px 24px rgba(254,211,90,0.35);
+  }
+  .btn.flash-btn{
+    background:linear-gradient(180deg,#fff7c4,#ffd84a);
+    color:#5a3a00;
+    box-shadow:0 6px 32px rgba(255,233,90,0.55);
+  }
+  .btn.thunder-btn{
+    background:linear-gradient(180deg,#7aa3ff,#3d6cff);
+    color:#fff;
+    box-shadow:0 6px 32px rgba(91,140,255,0.5);
+  }
+  .btn.ghost{
+    background:rgba(255,255,255,0.06);color:var(--ink);
+    border:1px solid rgba(255,255,255,0.12);
+    box-shadow:none;
+  }
+
+  /* Result panel */
+  #result{
+    width:100%;max-width:480px;
+    background:rgba(20,28,46,0.85);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:18px;padding:20px 22px;
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+    text-align:center;
+    display:none;
+  }
+  #result.show{display:block;animation:rise 0.45s ease-out}
+  @keyframes rise{
+    0%{opacity:0;transform:translateY(14px)}
+    100%{opacity:1;transform:translateY(0)}
+  }
+  #result .dist{
+    font-size:clamp(28px,8vw,40px);font-weight:800;color:var(--accent);
+    margin:6px 0 4px;letter-spacing:0.01em;
+  }
+  #result .gap{font-size:14px;color:var(--muted);margin-bottom:10px}
+  #result .compare{font-size:15px;color:var(--ink);line-height:1.55;margin-bottom:14px}
+  #result .compare b{color:var(--accent)}
+
+  /* Map (storm position) */
+  #map{
+    width:100%;height:90px;background:rgba(255,255,255,0.04);
+    border-radius:12px;position:relative;margin-bottom:14px;overflow:hidden;
+    border:1px solid rgba(255,255,255,0.06);
+  }
+  #map .you{
+    position:absolute;left:50%;bottom:8px;width:30px;height:30px;
+    transform:translateX(-50%);
+    background:radial-gradient(circle,var(--ok),#2a8b2c);
+    border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+  }
+  #map .storm-dot{
+    position:absolute;width:24px;height:24px;border-radius:50%;
+    background:radial-gradient(circle,var(--thunder),#1f3da8);
+    transform:translate(-50%,-50%);
+    display:flex;align-items:center;justify-content:center;font-size:13px;
+    box-shadow:0 0 14px rgba(91,140,255,0.6);
+  }
+  #map .arc{position:absolute;border:1px dashed rgba(255,255,255,0.1);border-radius:50%;
+    transform:translate(-50%,-50%);left:50%;bottom:8px;pointer-events:none}
+
+  /* History bar */
+  #history{
+    width:100%;max-width:480px;display:flex;gap:6px;justify-content:center;
+    flex-wrap:wrap;
+    min-height:22px;
+  }
+  #history .pip{
+    width:18px;height:18px;border-radius:50%;
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.12);
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;color:var(--muted);
+  }
+  #history .pip.done{background:var(--accent);color:#3a2400;border-color:var(--accent);font-weight:700}
+  #history .pip.miss{background:rgba(255,80,80,0.3);color:#fff;border-color:rgba(255,120,120,0.4)}
+
+  /* Final */
+  #final{
+    width:100%;max-width:480px;
+    background:linear-gradient(180deg,rgba(254,211,90,0.12),rgba(91,140,255,0.08));
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:20px;padding:24px 22px;text-align:center;
+    display:none;
+  }
+  #final.show{display:block;animation:rise 0.5s ease-out}
+  #final h2{margin:0 0 14px;font-size:22px}
+  #final .stats{display:flex;justify-content:center;gap:24px;margin:14px 0 18px;flex-wrap:wrap}
+  #final .stat{font-size:12px;color:var(--muted)}
+  #final .stat b{display:block;font-size:22px;color:var(--ink);margin-top:2px}
+  #final .lesson{font-size:13px;color:var(--muted);line-height:1.6;margin:14px 0;
+    padding:12px;background:rgba(255,255,255,0.04);border-radius:10px}
+  #final .lesson b{color:var(--accent)}
+
+  /* Title screen */
+  #title{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    z-index:20;padding:24px;
+    background:rgba(10,14,26,0.5);
+    backdrop-filter:blur(2px);
+  }
+  #title.gone{opacity:0;pointer-events:none;transition:opacity 0.6s}
+  #title h1{
+    font-size:clamp(32px,9vw,52px);margin:0 0 6px;
+    color:var(--accent);
+    text-shadow:0 4px 20px rgba(254,211,90,0.4);
+    letter-spacing:0.04em;
+  }
+  #title .sub{color:var(--muted);font-size:clamp(13px,3.6vw,16px);margin-bottom:8px}
+  #title .age{font-size:11px;color:var(--muted);margin-bottom:24px;letter-spacing:0.1em}
+  #title .how{
+    max-width:360px;text-align:center;margin:14px 0 22px;
+    font-size:14px;color:var(--ink);line-height:1.7;
+  }
+  #title .how .step{display:block;margin:4px 0}
+
+  .tap-hint{
+    font-size:13px;color:var(--muted);margin-top:8px;
+  }
+  .tap-hint.warn{color:var(--rose)}
+
+  @media (max-height:600px){
+    #panel{padding-top:10px;gap:12px}
+    #title h1{font-size:36px}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="rain"></div>
+
+  <div id="storm">
+    <svg viewBox="0 0 520 210" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="14" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <radialGradient id="cgrad" cx="50%" cy="60%" r="60%">
+          <stop offset="0%" stop-color="#2c3552"/>
+          <stop offset="60%" stop-color="#171f33"/>
+          <stop offset="100%" stop-color="#0a0e1a" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="140" cy="130" rx="100" ry="60" fill="url(#cgrad)"/>
+      <ellipse cx="260" cy="100" rx="130" ry="80" fill="url(#cgrad)"/>
+      <ellipse cx="380" cy="135" rx="105" ry="62" fill="url(#cgrad)"/>
+    </svg>
+  </div>
+
+  <svg id="bolt" viewBox="0 0 100 220" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <polygon points="58,0 22,110 50,110 38,220 80,90 50,90 70,0" fill="#fffce0" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>
+
+  <div id="flash"></div>
+</div>
+
+<div id="hud">
+  <div class="round"><span id="roundLabel">ラウンド 1 / 5</span></div>
+  <button class="lang" id="langBtn" type="button">EN</button>
+</div>
+
+<!-- Title -->
+<div id="title" role="dialog" aria-label="カミナリ・タンテイ">
+  <h1>カミナリ・タンテイ</h1>
+  <div class="sub" data-i18n="subtitle">ピカッと ゴロゴロの あいだを はかろう</div>
+  <div class="age" data-i18n="age">5〜9さい</div>
+  <div class="how">
+    <span class="step" data-i18n="step1">①「⚡ ピカッ！」を みたら タップ</span>
+    <span class="step" data-i18n="step2">②「🌩️ ゴロゴロ」が きこえたら タップ</span>
+    <span class="step" data-i18n="step3">③ かみなり が どれだけ むこう か わかる！</span>
+  </div>
+  <button class="btn primary" id="startBtn" type="button" data-i18n="startBtn">はじめる</button>
+</div>
+
+<div id="panel">
+  <div class="msg" id="msg" data-i18n="msgIntro"></div>
+  <button class="btn primary" id="actionBtn" type="button" style="display:none"></button>
+  <button class="btn flash-btn" id="flashBtn" type="button" style="display:none">⚡ ピカッ！</button>
+  <button class="btn thunder-btn" id="thunderBtn" type="button" style="display:none">🌩️ ゴロゴロ！</button>
+
+  <div id="result">
+    <div class="gap" id="gapText"></div>
+    <div class="dist" id="distText"></div>
+    <div class="compare" id="compareText"></div>
+    <div id="map">
+      <div class="arc" id="arc1" style="width:80px;height:80px"></div>
+      <div class="arc" id="arc2" style="width:160px;height:160px"></div>
+      <div class="arc" id="arc3" style="width:240px;height:240px"></div>
+      <div class="you">🧒</div>
+      <div class="storm-dot" id="stormDot" style="left:50%;top:50%">⛈️</div>
+    </div>
+    <button class="btn primary" id="nextBtn" type="button" data-i18n="nextBtn">つぎ →</button>
+  </div>
+
+  <div id="final">
+    <h2 data-i18n="finalTitle">5かい おわり！</h2>
+    <div class="stats">
+      <div class="stat"><span data-i18n="closest">いちばん ちかい</span><b id="closestVal">—</b></div>
+      <div class="stat"><span data-i18n="farthest">いちばん とおい</span><b id="farthestVal">—</b></div>
+    </div>
+    <div class="lesson" id="lesson"></div>
+    <button class="btn primary" id="restartBtn" type="button" data-i18n="restartBtn">もういちど</button>
+  </div>
+
+  <div id="history"></div>
+</div>
+
+<script>
+'use strict';
+
+// ===== I18N =====
+const I18N = {
+  ja: {
+    subtitle:'ピカッと ゴロゴロの あいだを はかろう',
+    age:'5〜9さい',
+    step1:'①「⚡ ピカッ！」を みたら タップ',
+    step2:'②「🌩️ ゴロゴロ」が きこえたら タップ',
+    step3:'③ かみなり が どれだけ むこう か わかる！',
+    startBtn:'はじめる',
+    nextBtn:'つぎ →',
+    restartBtn:'もういちど',
+    finalTitle:'5かい おわり！',
+    closest:'いちばん ちかい',
+    farthest:'いちばん とおい',
+    msgIntro:'おそらに あらしが くるよ…\nボタンを おして、まちかまえよう。',
+    waitBtn:'⛈️ かみなりを まつ',
+    msgWaiting:'…じっと まって…\n⚡ピカッ をみたら、すぐ タップ！',
+    msgFlashedTooEarly:'まだ ピカッてないよ！\nもういちど…',
+    msgFlashed:'ピカッ！\nゴロゴロ が きこえたら タップ！',
+    msgThunderTooEarly:'まだ きこえてないよ！\nしずかに きいて…',
+    msgFlashMissed:'ピカッ を みのがした…\nもういちど！',
+    msgThunderMissed:'ゴロゴロ を ききのがした…\nもういちど！',
+    distLabel:'メートル',
+    distLabelKm:'キロメートル',
+    gapLabel:'ピカッ から ゴロゴロまで {s} びょう',
+    closeAlert:'⚡ すごく ちかい！',
+    okAlert:'⛈️ ちょっと とおい',
+    farAlert:'☁️ ずっと とおい',
+    veryFar:'☁️☁️ もう きこえないかも',
+    cmpSchool:'がっこうの プール <b>{n}こ</b> ぶん',
+    cmpHouse:'いえから <b>{n}けん</b> さき',
+    cmpTrain:'えきまで <b>{n}ふん</b> あるく きょり',
+    cmpCity:'となりまち <b>{n}こ</b> ぶん',
+    cmpFar:'ふつう なら きこえないくらい とおい',
+    lessonText:'ひかりは すごく はやい (1びょうで 30まんキロ)。<br>でも おとは 1びょうで <b>340メートル</b> しか すすまない。<br>だから ピカッ → ゴロゴロ の あいだ で きょりが わかるんだ！',
+  },
+  en: {
+    subtitle:'Time the gap between flash and thunder',
+    age:'AGES 5–9',
+    step1:'① Tap when you see ⚡ FLASH',
+    step2:'② Tap when you hear 🌩️ THUNDER',
+    step3:'③ Find out how far the storm is!',
+    startBtn:'Start',
+    nextBtn:'Next →',
+    restartBtn:'Play again',
+    finalTitle:'5 rounds complete!',
+    closest:'Closest',
+    farthest:'Farthest',
+    msgIntro:'A storm is coming…\nPress the button to wait.',
+    waitBtn:'⛈️ Wait for thunder',
+    msgWaiting:'…stay still…\nWatch for ⚡, tap as soon as you see it!',
+    msgFlashedTooEarly:'No flash yet!\nTry again…',
+    msgFlashed:'FLASH!\nNow tap when you hear thunder!',
+    msgThunderTooEarly:'You haven\'t heard it yet!\nListen quietly…',
+    msgFlashMissed:'You missed the flash…\nTry again!',
+    msgThunderMissed:'You missed the thunder…\nTry again!',
+    distLabel:'meters',
+    distLabelKm:'kilometers',
+    gapLabel:'{s} sec between flash and thunder',
+    closeAlert:'⚡ Very close!',
+    okAlert:'⛈️ A bit far',
+    farAlert:'☁️ Far away',
+    veryFar:'☁️☁️ Maybe too far to hear',
+    cmpSchool:'<b>{n}</b> school pools long',
+    cmpHouse:'Past <b>{n}</b> houses',
+    cmpTrain:'About <b>{n} min</b> walk to station',
+    cmpCity:'<b>{n}</b> towns away',
+    cmpFar:'Far enough you might not hear it',
+    lessonText:'Light is super fast (300,000 km / sec).<br>But sound moves only <b>340 meters / sec</b>.<br>That\'s why flash and thunder don\'t arrive together — and how you can tell distance!',
+  }
+};
+
+let lang = 'ja';
+function t(key, vars){
+  let s = (I18N[lang] && I18N[lang][key]) || (I18N.ja[key] || key);
+  if (vars) for (const k in vars) s = s.replace('{'+k+'}', vars[k]);
+  return s;
+}
+function applyI18n(){
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const k = el.getAttribute('data-i18n');
+    if (I18N[lang][k] !== undefined) el.innerHTML = I18N[lang][k].replace(/\n/g,'<br>');
+  });
+  document.getElementById('langBtn').textContent = lang === 'ja' ? 'EN' : 'JA';
+  document.documentElement.lang = lang;
+  if (state.phase === 'idle') setMsg(t('msgIntro'));
+}
+
+// ===== Web Audio (thunder synth) =====
+let audioCtx = null;
+function ac(){ if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; }
+
+function playThunder(){
+  try {
+    const ctx = ac();
+    const dur = 2.4;
+    const t0 = ctx.currentTime;
+
+    // Brown noise via filtered white noise
+    const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < data.length; i++) {
+      const w = (Math.random() * 2 - 1) * 0.08;
+      last = (last + w) * 0.985;
+      data[i] = last;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+
+    // Low pass + bandpass for rumble
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 280;
+    lp.Q.value = 0.7;
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 30;
+
+    // Rumble envelope
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.9, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.4, t0 + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.7, t0 + 0.55);
+    g.gain.exponentialRampToValueAtTime(0.25, t0 + 1.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    // Sub crackle (single thump)
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(80, t0);
+    o.frequency.exponentialRampToValueAtTime(40, t0 + 0.4);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t0);
+    og.gain.exponentialRampToValueAtTime(0.5, t0 + 0.04);
+    og.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.7);
+
+    src.connect(lp); lp.connect(hp); hp.connect(g); g.connect(ctx.destination);
+    o.connect(og); og.connect(ctx.destination);
+
+    src.start(t0); src.stop(t0 + dur);
+    o.start(t0); o.stop(t0 + 0.7);
+  } catch (e) {}
+}
+
+function playFlashSound(){
+  try {
+    const ctx = ac();
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(2400, t0);
+    o.frequency.exponentialRampToValueAtTime(1100, t0 + 0.1);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t0); o.stop(t0 + 0.2);
+  } catch (e) {}
+}
+
+function playPing(ok){
+  try {
+    const ctx = ac();
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(ok ? 880 : 220, t0);
+    o.frequency.exponentialRampToValueAtTime(ok ? 1320 : 180, t0 + 0.18);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t0); o.stop(t0 + 0.3);
+  } catch (e) {}
+}
+
+// ===== Rain =====
+function spawnRain(n){
+  const rain = document.getElementById('rain');
+  rain.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement('div');
+    d.className = 'drop';
+    d.style.left = Math.random()*100 + 'vw';
+    d.style.animationDuration = (0.6 + Math.random()*0.7) + 's';
+    d.style.animationDelay = (-Math.random()*1.2) + 's';
+    d.style.opacity = (0.3 + Math.random()*0.5);
+    d.style.height = (10 + Math.random()*8) + 'px';
+    rain.appendChild(d);
+  }
+}
+
+// ===== Game state =====
+const SOUND_SPEED = 340; // m/s
+const TOTAL_ROUNDS = 5;
+
+const state = {
+  phase: 'idle', // idle | waiting | flashed | done
+  round: 0,
+  results: [], // {gap, dist}
+  flashTime: 0,
+  thunderTime: 0,
+  flashUserTap: 0,
+  thunderUserTap: 0,
+  flashTimer: null,
+  thunderTimer: null,
+  trueGap: 0,
+};
+
+const els = {
+  msg: document.getElementById('msg'),
+  actionBtn: document.getElementById('actionBtn'),
+  flashBtn: document.getElementById('flashBtn'),
+  thunderBtn: document.getElementById('thunderBtn'),
+  result: document.getElementById('result'),
+  gapText: document.getElementById('gapText'),
+  distText: document.getElementById('distText'),
+  compareText: document.getElementById('compareText'),
+  stormDot: document.getElementById('stormDot'),
+  nextBtn: document.getElementById('nextBtn'),
+  final: document.getElementById('final'),
+  closestVal: document.getElementById('closestVal'),
+  farthestVal: document.getElementById('farthestVal'),
+  lesson: document.getElementById('lesson'),
+  restartBtn: document.getElementById('restartBtn'),
+  flashEl: document.getElementById('flash'),
+  bolt: document.getElementById('bolt'),
+  storm: document.getElementById('storm'),
+  history: document.getElementById('history'),
+  roundLabel: document.getElementById('roundLabel'),
+  title: document.getElementById('title'),
+  startBtn: document.getElementById('startBtn'),
+  langBtn: document.getElementById('langBtn'),
+};
+
+function setMsg(s){ els.msg.innerHTML = s.replace(/\n/g,'<br>'); }
+
+function updateRoundLabel(){
+  const r = Math.min(state.round + 1, TOTAL_ROUNDS);
+  els.roundLabel.textContent = lang === 'ja' ? `ラウンド ${r} / ${TOTAL_ROUNDS}` : `Round ${r} / ${TOTAL_ROUNDS}`;
+}
+
+function buildHistory(){
+  els.history.innerHTML = '';
+  for (let i = 0; i < TOTAL_ROUNDS; i++){
+    const p = document.createElement('div');
+    p.className = 'pip';
+    if (state.results[i]) {
+      p.classList.add(state.results[i].miss ? 'miss' : 'done');
+      p.textContent = state.results[i].miss ? '×' : (i+1);
+    } else {
+      p.textContent = i+1;
+    }
+    els.history.appendChild(p);
+  }
+}
+
+function showOnly(...buttons){
+  [els.actionBtn, els.flashBtn, els.thunderBtn].forEach(b => b.style.display = 'none');
+  buttons.forEach(b => b.style.display = '');
+  els.result.classList.remove('show');
+  els.final.classList.remove('show');
+}
+
+function startRound(){
+  state.phase = 'idle';
+  state.flashUserTap = 0;
+  state.thunderUserTap = 0;
+  clearTimeout(state.flashTimer);
+  clearTimeout(state.thunderTimer);
+
+  updateRoundLabel();
+  buildHistory();
+
+  setMsg(t('msgIntro'));
+  els.actionBtn.textContent = t('waitBtn');
+  els.actionBtn.disabled = false;
+  showOnly(els.actionBtn);
+}
+
+function beginWait(){
+  // Resume audio context on user gesture
+  try { ac().resume(); } catch (e) {}
+
+  state.phase = 'waiting';
+  setMsg(t('msgWaiting'));
+  showOnly(els.flashBtn);
+  els.flashBtn.disabled = false;
+
+  // Random pre-flash delay 1.2-3.5s
+  const preDelay = 1200 + Math.random() * 2300;
+  // True gap (flash → thunder) 1.5–8s = 510m–2720m
+  state.trueGap = 1500 + Math.random() * 6500;
+
+  state.flashTimer = setTimeout(() => fireFlash(), preDelay);
+}
+
+function fireFlash(){
+  if (state.phase !== 'waiting') return;
+  state.flashTime = performance.now();
+  state.phase = 'flashed';
+
+  // Visuals
+  els.flashEl.classList.remove('fire'); void els.flashEl.offsetWidth;
+  els.flashEl.classList.add('fire');
+  els.bolt.classList.remove('fire'); void els.bolt.offsetWidth;
+  els.bolt.classList.add('fire');
+  // Random bolt position
+  const xPct = 25 + Math.random() * 50;
+  els.bolt.style.left = xPct + '%';
+
+  playFlashSound();
+
+  // Schedule thunder
+  state.thunderTimer = setTimeout(() => fireThunder(), state.trueGap);
+}
+
+function fireThunder(){
+  state.thunderTime = performance.now();
+  els.storm.classList.remove('lit','shake'); void els.storm.offsetWidth;
+  els.storm.classList.add('shake');
+  playThunder();
+  // If user already tapped flash but hasn't tapped thunder yet, that's fine. They have a window.
+  // If user never tapped flash, give them missed-state when they finally tap something or after a timeout.
+  if (state.flashUserTap === 0){
+    // They missed the flash entirely - end round as miss after a short window
+    setTimeout(() => {
+      if (state.phase === 'flashed' && state.flashUserTap === 0) {
+        endRoundMiss('flash');
+      }
+    }, 1800);
+  }
+}
+
+function onFlashTap(){
+  if (state.phase === 'idle' || state.phase === 'done') return;
+  if (state.phase === 'waiting'){
+    // Tapped before flash
+    setMsg(t('msgFlashedTooEarly'));
+    playPing(false);
+    // Small penalty: cancel timers, restart waiting
+    clearTimeout(state.flashTimer);
+    clearTimeout(state.thunderTimer);
+    state.phase = 'idle';
+    setTimeout(() => beginWait(), 900);
+    return;
+  }
+  if (state.phase === 'flashed' && state.flashUserTap === 0){
+    state.flashUserTap = performance.now();
+    setMsg(t('msgFlashed'));
+    showOnly(els.thunderBtn);
+    els.thunderBtn.disabled = false;
+    playPing(true);
+  }
+}
+
+function onThunderTap(){
+  if (state.phase !== 'flashed') return;
+  if (state.flashUserTap === 0){
+    setMsg(t('msgFlashedTooEarly'));
+    playPing(false);
+    return;
+  }
+  // Has thunder actually played?
+  if (state.thunderTime === 0){
+    setMsg(t('msgThunderTooEarly'));
+    playPing(false);
+    return;
+  }
+  state.thunderUserTap = performance.now();
+
+  // Distance based on the kid's measured gap (their reaction times included = realistic measurement)
+  const measuredMs = state.thunderUserTap - state.flashUserTap;
+  finishRound(measuredMs);
+}
+
+function endRoundMiss(which){
+  state.phase = 'done';
+  showOnly();
+  setMsg(t(which === 'flash' ? 'msgFlashMissed' : 'msgThunderMissed'));
+  state.results[state.round] = { miss: true };
+  buildHistory();
+  setTimeout(() => {
+    state.round++;
+    if (state.round >= TOTAL_ROUNDS) showFinal();
+    else startRound();
+  }, 1600);
+}
+
+function distanceCompare(meters){
+  // Kid-friendly comparisons
+  if (meters < 200){
+    const pools = Math.max(1, Math.round(meters / 25));
+    return t('cmpSchool', { n: pools });
+  } else if (meters < 800){
+    const houses = Math.max(2, Math.round(meters / 12));
+    return t('cmpHouse', { n: houses });
+  } else if (meters < 2500){
+    const mins = Math.max(1, Math.round(meters / 80));
+    return t('cmpTrain', { n: mins });
+  } else if (meters < 8000){
+    const towns = Math.max(1, Math.round(meters / 2000));
+    return t('cmpCity', { n: towns });
+  } else {
+    return t('cmpFar');
+  }
+}
+
+function distanceLabel(meters){
+  if (meters < 1000) return Math.round(meters) + ' ' + t('distLabel');
+  return (meters/1000).toFixed(meters < 10000 ? 2 : 1) + ' ' + t('distLabelKm');
+}
+
+function distanceAlert(meters){
+  if (meters < 700) return t('closeAlert');
+  if (meters < 2500) return t('okAlert');
+  if (meters < 7000) return t('farAlert');
+  return t('veryFar');
+}
+
+function placeStormDot(meters){
+  // Map: bottom center is "you", top is far. Max scale 5km.
+  const max = 5000;
+  const f = Math.min(1, meters / max);
+  const dot = els.stormDot;
+  // y from 92% (close) to 18% (far)
+  const y = 92 - f * 74;
+  // small horizontal jitter
+  const x = 50 + (Math.random() - 0.5) * 20;
+  dot.style.left = x + '%';
+  dot.style.top = y + '%';
+  dot.style.bottom = 'auto';
+}
+
+function finishRound(measuredMs){
+  state.phase = 'done';
+  showOnly();
+
+  const seconds = measuredMs / 1000;
+  const meters = seconds * SOUND_SPEED;
+
+  state.results[state.round] = { gap: seconds, dist: meters, miss: false };
+
+  els.gapText.textContent = t('gapLabel', { s: seconds.toFixed(1) });
+  els.distText.textContent = distanceLabel(meters);
+  els.compareText.innerHTML = distanceAlert(meters) + '<br>' + distanceCompare(meters);
+  placeStormDot(meters);
+
+  buildHistory();
+  els.result.classList.add('show');
+}
+
+function showFinal(){
+  showOnly();
+  els.result.classList.remove('show');
+  buildHistory();
+
+  const valid = state.results.filter(r => r && !r.miss);
+  if (valid.length === 0){
+    els.closestVal.textContent = '—';
+    els.farthestVal.textContent = '—';
+  } else {
+    const min = valid.reduce((a,b) => a.dist < b.dist ? a : b);
+    const max = valid.reduce((a,b) => a.dist > b.dist ? a : b);
+    els.closestVal.textContent = distanceLabel(min.dist);
+    els.farthestVal.textContent = distanceLabel(max.dist);
+  }
+  els.lesson.innerHTML = t('lessonText');
+  els.final.classList.add('show');
+  setMsg('');
+  els.roundLabel.textContent = lang === 'ja' ? '✨ おわり' : '✨ Done';
+}
+
+function nextRound(){
+  state.round++;
+  if (state.round >= TOTAL_ROUNDS) {
+    showFinal();
+  } else {
+    startRound();
+  }
+}
+
+function restart(){
+  state.round = 0;
+  state.results = [];
+  startRound();
+}
+
+// ===== Event wiring =====
+els.startBtn.addEventListener('click', () => {
+  els.title.classList.add('gone');
+  setTimeout(() => { els.title.style.display = 'none'; }, 700);
+  // Resume audio on first user gesture
+  try { ac().resume(); } catch (e) {}
+  state.round = 0;
+  state.results = [];
+  startRound();
+});
+
+els.actionBtn.addEventListener('click', () => beginWait());
+els.flashBtn.addEventListener('click', () => onFlashTap());
+els.thunderBtn.addEventListener('click', () => onThunderTap());
+els.nextBtn.addEventListener('click', () => nextRound());
+els.restartBtn.addEventListener('click', () => restart());
+
+els.langBtn.addEventListener('click', () => {
+  lang = (lang === 'ja') ? 'en' : 'ja';
+  applyI18n();
+  if (state.phase === 'idle' && state.results.length === 0) {
+    // Title still visible? update messages
+  }
+  if (els.actionBtn.style.display !== 'none') els.actionBtn.textContent = t('waitBtn');
+  updateRoundLabel();
+});
+
+// Init
+spawnRain(70);
+applyI18n();
+setMsg(t('msgIntro'));
+buildHistory();
+updateRoundLabel();
+
+// Keyboard support (space)
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space'){
+    e.preventDefault();
+    if (els.title.style.display !== 'none' && !els.title.classList.contains('gone')) {
+      els.startBtn.click();
+    } else if (els.actionBtn.style.display !== 'none' && !els.actionBtn.disabled) {
+      els.actionBtn.click();
+    } else if (els.flashBtn.style.display !== 'none' && !els.flashBtn.disabled) {
+      els.flashBtn.click();
+    } else if (els.thunderBtn.style.display !== 'none' && !els.thunderBtn.disabled) {
+      els.thunderBtn.click();
+    } else if (els.nextBtn.offsetParent !== null) {
+      els.nextBtn.click();
+    } else if (els.restartBtn.offsetParent !== null) {
+      els.restartBtn.click();
+    }
+  }
+});
+</script>
+</body>
+</html>
